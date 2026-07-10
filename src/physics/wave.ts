@@ -1,15 +1,24 @@
 /**
  * Huygens-Fresnel wave function computation.
  *
- * Each slit is discretised into SOURCES_PER_SLIT point sources.
- * psi(x, y) = sum over all sources of exp(i*k*r) / sqrt(r)
+ * Each slit is discretised into point sources with the Rayleigh-Sommerfeld
+ * obliquity factor:
  *
- * Returns two Float32Arrays: re and im, each of length GRID_W * GRID_H.
- * Index mapping: idx = y * GRID_W + x
+ *   psi(x, y) = sum over sources of cos(theta) * exp(i*k*r) / sqrt(r)
+ *
+ * where cos(theta) = dy/r suppresses unphysical sideways/backward radiation
+ * from each secondary source.
+ *
+ * Source count adapts to slit width: aliasing (grating lobes) only appears
+ * when source spacing exceeds lambda, so spacing <= 2 cells (lambda/12.5)
+ * is far inside the safe zone while keeping the sum cheap enough to
+ * recompute live while a slider is dragged.
+ *
+ * Returns Float32Arrays of length GRID_W * GRID_H, idx = y * GRID_W + x.
  * Only computed for y > BARRIER_Y (the region beyond the slits).
  */
 
-import { GRID_W, GRID_H, K, BARRIER_Y, SOURCES_PER_SLIT } from './constants';
+import { GRID_W, GRID_H, K, BARRIER_Y } from './constants';
 
 export interface WaveField {
   re: Float32Array;
@@ -21,25 +30,39 @@ export interface WaveField {
 export interface SlitParams {
   slitWidth: number;   // full width in grid cells
   slitSep: number;     // centre-to-centre separation in grid cells
+  slitCount: number;   // 1, 2 or 3
 }
 
-export function computeWaveField(params: SlitParams): WaveField {
-  const { slitWidth, slitSep } = params;
+/** Preview quality uses fewer sources for smooth slider dragging. */
+export type WaveQuality = 'full' | 'preview';
+
+function sourcesPerSlit(slitWidth: number, quality: WaveQuality): number {
+  const spacing = quality === 'preview' ? 4 : 2; // grid cells, both << lambda/2
+  return Math.max(quality === 'preview' ? 4 : 8, Math.ceil(slitWidth / spacing));
+}
+
+function slitCentres(slitCount: number, slitSep: number): number[] {
   const cx = GRID_W / 2;
+  if (slitCount === 1) return [cx];
+  if (slitCount === 3) return [cx - slitSep, cx, cx + slitSep];
+  return [cx - slitSep / 2, cx + slitSep / 2];
+}
 
-  // Slit centres
-  const slit1Centre = cx - slitSep / 2;
-  const slit2Centre = cx + slitSep / 2;
+export function computeWaveField(
+  params: SlitParams,
+  quality: WaveQuality = 'full'
+): WaveField {
+  const { slitWidth, slitSep, slitCount } = params;
+  const perSlit = sourcesPerSlit(slitWidth, quality);
+  const centres = slitCentres(slitCount, slitSep);
 
-  // Build source positions (x, y=BARRIER_Y) for both slits
-  const sources: Array<[number, number]> = [];
-
-  for (let s = 0; s < SOURCES_PER_SLIT; s++) {
-    const t = (s + 0.5) / SOURCES_PER_SLIT; // 0..1
-    // Slit 1
-    sources.push([slit1Centre - slitWidth / 2 + t * slitWidth, BARRIER_Y]);
-    // Slit 2
-    sources.push([slit2Centre - slitWidth / 2 + t * slitWidth, BARRIER_Y]);
+  // Source x positions along the barrier line (y = BARRIER_Y)
+  const sourceXs: number[] = [];
+  for (const c of centres) {
+    for (let s = 0; s < perSlit; s++) {
+      const t = (s + 0.5) / perSlit; // 0..1
+      sourceXs.push(c - slitWidth / 2 + t * slitWidth);
+    }
   }
 
   const total = GRID_W * GRID_H;
@@ -49,22 +72,29 @@ export function computeWaveField(params: SlitParams): WaveField {
   const prob = new Float32Array(total);
 
   let maxProb = 0;
+  const nSrc = sourceXs.length;
 
-  for (let y = BARRIER_Y + 1; y < GRID_H; y++) {
+  // Preview quality also strides rows: the pattern varies on the scale of
+  // lambda (25 cells), so duplicating alternate rows is visually invisible
+  // during a slider drag.
+  const yStep = quality === 'preview' ? 2 : 1;
+
+  for (let y = BARRIER_Y + 1; y < GRID_H; y += yStep) {
+    const dy = y - BARRIER_Y;
     for (let x = 0; x < GRID_W; x++) {
       let sumRe = 0;
       let sumIm = 0;
 
-      for (const [sx, sy] of sources) {
-        const dx = x - sx;
-        const dy = y - sy;
+      for (let s = 0; s < nSrc; s++) {
+        const dx = x - sourceXs[s];
         const r = Math.sqrt(dx * dx + dy * dy);
-        if (r < 0.5) continue; // avoid singularity directly at source
+        if (r < 0.75) continue; // avoid singularity directly at source
 
+        // obliquity cos(theta) = dy/r  →  weight = dy / r^1.5
+        const w = dy / (r * Math.sqrt(r));
         const phase = K * r;
-        const invSqrtR = 1 / Math.sqrt(r);
-        sumRe += invSqrtR * Math.cos(phase);
-        sumIm += invSqrtR * Math.sin(phase);
+        sumRe += w * Math.cos(phase);
+        sumIm += w * Math.sin(phase);
       }
 
       const idx = y * GRID_W + x;
@@ -75,6 +105,16 @@ export function computeWaveField(params: SlitParams): WaveField {
       const p = a * a;
       prob[idx] = p;
       if (p > maxProb) maxProb = p;
+    }
+
+    // Fill the skipped row by copying this one
+    if (yStep === 2 && y + 1 < GRID_H) {
+      const src = y * GRID_W;
+      const dst = (y + 1) * GRID_W;
+      re.copyWithin(dst, src, src + GRID_W);
+      im.copyWithin(dst, src, src + GRID_W);
+      amp.copyWithin(dst, src, src + GRID_W);
+      prob.copyWithin(dst, src, src + GRID_W);
     }
   }
 

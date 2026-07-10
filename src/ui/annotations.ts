@@ -13,10 +13,12 @@ export interface Annotation {
   text: string;
   subtext?: string;
   color?: string;
+  id?: string;
 }
 
 export const ANNOTATIONS: Annotation[] = [
   {
+    id: 'slits',
     fx: 0.5,
     fy: (BARRIER_Y - 30) / GRID_H,
     align: 'center',
@@ -62,11 +64,20 @@ export function renderAnnotations(
   ctx: CanvasRenderingContext2D,
   visible: boolean,
   canvasW: number,
-  simH: number   // simulation area height (excludes histogram strip)
+  simH: number,  // simulation area height (excludes histogram strip)
+  slitCount: number = 2
 ): void {
   if (!visible) return;
 
   for (const ann of ANNOTATIONS) {
+    let { text, subtext } = ann;
+    if (ann.id === 'slits' && slitCount === 1) {
+      text = 'Pilot wave diffracts at the slit';
+      subtext = 'Particle rides it — no interference';
+    } else if (ann.id === 'slits' && slitCount === 3) {
+      text = 'Pilot wave → ALL THREE slits';
+    }
+
     const x = ann.fx * canvasW;
     const y = ann.fy * simH;
 
@@ -81,12 +92,12 @@ export function renderAnnotations(
     ctx.shadowColor = 'rgba(0,0,0,0.95)';
     ctx.shadowBlur = 8;
     ctx.fillStyle = color;
-    ctx.fillText(ann.text, x, y);
+    ctx.fillText(text, x, y);
 
-    if (ann.subtext) {
+    if (subtext) {
       ctx.font = '11px ui-monospace,monospace';
       ctx.fillStyle = color.replace(/[\d.]+\)$/, '0.72)');
-      ctx.fillText(ann.subtext, x, y + 16);
+      ctx.fillText(subtext, x, y + 16);
     }
 
     ctx.restore();

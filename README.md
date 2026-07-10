@@ -17,10 +17,11 @@ Particles have definite positions at all times. Their trajectories are guided by
 
 | Element | Description |
 |---|---|
-| **Blue field** | The pilot wave \|ψ\|² — probability density. Passes through BOTH slits simultaneously |
+| **Blue field** | The pilot wave \|ψ\|² — probability density. Passes through ALL slits simultaneously |
 | **Green trajectories** | Deterministic Bohmian particle paths guided by v = (ħ/m) Im(∇ψ/ψ) |
-| **Detector strip** | The fringe pattern building up particle by particle — identical to QM prediction |
+| **Detector strip** | The fringe pattern building up particle by particle, with the theoretical \|ψ\|² curve overlaid for comparison |
 | **Q potential** (toggle) | Quantum potential Q = −(ħ²/2m)∇²R/R — the non-local field that organises trajectories |
+| **Flow field** (toggle) | The guidance velocity field as arrows — the "current" every particle rides |
 
 ### Key Bohmian features shown
 
@@ -43,27 +44,31 @@ The quantum potential is derived from the amplitude R = |ψ|:
 Q = −(ħ²/2m) · ∇²R / R
 ```
 
-The wave function is computed analytically via Huygens-Fresnel superposition (120 point sources per slit). Particle trajectories integrate via 4th-order Runge-Kutta through the velocity field.
+The wave function is computed via Huygens-Fresnel superposition with the Rayleigh-Sommerfeld obliquity factor cos θ, using adaptive source counts per slit (source spacing stays far below λ/2, so the discretisation is exact for display purposes while staying fast enough to recompute live as you drag a slider). The guidance velocity comes purely from the phase gradient — the outgoing-wave kernel already carries the forward momentum ħk, so no drift term is added. Near wave nodes the true Bohmian speed diverges; the field is regularised and speed-capped so the fixed-step 4th-order Runge-Kutta integrator stays stable while keeping the characteristic whip around dark fringes.
 
 ## Controls
 
 | Control | Effect |
 |---|---|
-| Slit width | Narrower = wider diffraction, fewer fringes |
-| Slit separation | Larger = more fringes packed closer |
+| Slits (1 / 2 / 3) | Single-slit pure diffraction, the classic double slit, or a triple-slit grating |
+| Slit width | Narrower = wider diffraction, fewer fringes. Updates live while dragging |
+| Separation | Larger = more fringes packed closer. Updates live while dragging |
+| Presets | Classic · Wide fringes · Fine fringes · Single slit · Triple slit |
 | Interpretation | Toggle Bohm (trajectories) vs Copenhagen (probability cloud only) |
-| Wave display | `prob` = \|ψ\|², `real` = Re(ψ) oscillating crests |
-| Q potential | Overlay the quantum potential field in plasma colourmap |
-| Fire burst / single | Launch particles sampled from Born distribution |
+| Wave shows | \|ψ\|² probability density or Re(ψ) oscillating crests |
+| Layers | ψ wave · Q potential · Flow field · Trajectories · Labels · Axis |
+| Fire burst / Fire 1 / Clear | Launch particles sampled from the Born distribution |
+| Speed / Pause / Auto-fire | Simulation pacing |
 | 3D Perspective | CSS perspective transform — drag to rotate the view |
 
-Hover any control in the panel for a plain-English explanation of what it does physically.
+Keyboard: **space** pause · **f** fire burst · **c** clear · **q** toggle Q · **t** toggle trajectories.
+
+Hover any control for a plain-English explanation of what it does physically. Hover the canvas for a live readout of \|ψ\|², Q and v at the cursor.
 
 ## Stack
 
-- Vite + TypeScript — no framework
-- HTML5 Canvas 2D (HiDPI/retina aware)
-- lil-gui — parameter controls
+- Vite + TypeScript — no framework, zero runtime dependencies
+- HTML5 Canvas 2D (HiDPI/retina aware), static fields cached offscreen; finished trajectories are stamped once onto a persistent layer so per-frame cost scales with active particles only
 - Pure physics: no physics library, all equations derived from first principles
 
 ## Running locally

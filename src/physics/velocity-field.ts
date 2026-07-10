@@ -7,14 +7,20 @@
  * field directly, then take Im(grad_psi / psi).
  *
  * For psi = re + i*im:
- *   Im(grad_psi / psi) = Im((dpsi/dx + i*dpsi/dy) / psi)
- *
- * Expanded:
  *   vx = (hbar/m) * (re * d(im)/dx - im * d(re)/dx) / |psi|^2
  *   vy = (hbar/m) * (re * d(im)/dy - im * d(re)/dy) / |psi|^2
+ *
+ * No additive forward-momentum term: the Huygens sum of outgoing waves
+ * exp(i*k*r)/sqrt(r) already carries the full forward momentum in its phase
+ * gradient (a single source gives exactly v = (ħk/m) r̂). Adding ħk/m on top
+ * would double-count it, halving every deflection angle.
+ *
+ * Near wave nodes |psi|² → 0 and the true Bohmian speed diverges; we
+ * regularise the division and cap |v| at V_MAX so the fixed-step RK4
+ * stays stable while preserving the whip-around-the-node behaviour.
  */
 
-import { GRID_W, GRID_H, HBAR, MASS, BARRIER_Y, R_EPSILON, K } from './constants';
+import { GRID_W, GRID_H, HBAR, MASS, BARRIER_Y, V_MAX } from './constants';
 import type { WaveField } from './wave';
 
 export interface VelocityField {
@@ -30,16 +36,18 @@ export function computeVelocityField(wave: WaveField): VelocityField {
 
   const coeff = HBAR / MASS;
 
+  // Regularisation floor relative to the field's typical intensity
+  let maxProb = 0;
+  for (let i = 0; i < total; i++) {
+    const p = amp[i] * amp[i];
+    if (p > maxProb) maxProb = p;
+  }
+  const pFloor = maxProb * 1e-7;
+
   for (let y = BARRIER_Y + 1; y < GRID_H - 1; y++) {
     for (let x = 1; x < GRID_W - 1; x++) {
       const idx = y * GRID_W + x;
-      const prob = amp[idx] * amp[idx];
-
-      if (prob < R_EPSILON * R_EPSILON) {
-        vx[idx] = 0;
-        vy[idx] = 0;
-        continue;
-      }
+      const prob = Math.max(amp[idx] * amp[idx], pFloor);
 
       const reC = re[idx];
       const imC = im[idx];
@@ -51,9 +59,18 @@ export function computeVelocityField(wave: WaveField): VelocityField {
       const dim_dy = (im[(y + 1) * GRID_W + x] - im[(y - 1) * GRID_W + x]) / 2;
 
       // Im[(dψ/dx)/ψ] = (re·d(im)/dx - im·d(re)/dx) / |ψ|²
-      vx[idx] = coeff * (reC * dim_dx - imC * dre_dx) / prob;
-      // vy: quantum correction + base forward momentum ħk/m for downward-propagating wave
-      vy[idx] = coeff * (reC * dim_dy - imC * dre_dy) / prob + (HBAR * K) / MASS;
+      let ux = coeff * (reC * dim_dx - imC * dre_dx) / prob;
+      let uy = coeff * (reC * dim_dy - imC * dre_dy) / prob;
+
+      const speed = Math.sqrt(ux * ux + uy * uy);
+      if (speed > V_MAX) {
+        const s = V_MAX / speed;
+        ux *= s;
+        uy *= s;
+      }
+
+      vx[idx] = ux;
+      vy[idx] = uy;
     }
   }
 

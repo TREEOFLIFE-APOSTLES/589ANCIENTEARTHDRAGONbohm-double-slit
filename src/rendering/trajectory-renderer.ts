@@ -1,12 +1,16 @@
 /**
- * Renders Bohmian particle trajectories as smooth curves.
- * Active particles have a bright glowing head; completed ones fade.
+ * Renders Bohmian particle trajectories.
+ *
+ * Active particles are drawn live each frame (bright, glowing head).
+ * Finished trajectories are stamped ONCE onto a persistent offscreen layer
+ * by the caller (stampTrail), so per-frame cost scales with active
+ * particles only, no matter how many thousands have completed.
  */
 
 import { GRID_W, GRID_H } from '../physics/constants';
 import type { Particle } from '../physics/trajectory';
 
-export function renderTrajectories(
+export function renderActiveTrajectories(
   ctx: CanvasRenderingContext2D,
   particles: Particle[],
   canvasW: number,
@@ -15,52 +19,78 @@ export function renderTrajectories(
   const sx = canvasW / GRID_W;
   const sy = canvasH / GRID_H;
 
+  ctx.save();
   for (const p of particles) {
-    if (p.trail.length < 2) continue;
+    if (!p.active || p.trail.length < 2) continue;
 
-    ctx.save();
-    ctx.globalAlpha = p.active ? 0.85 : 0.45;
-    ctx.strokeStyle = p.active ? '#39ff14' : '#22aa00';
-    ctx.lineWidth = p.active ? 1.5 : 1;
+    ctx.globalAlpha = 0.85;
+    ctx.strokeStyle = '#39ff14';
+    ctx.lineWidth = 1.5;
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
 
     ctx.beginPath();
     ctx.moveTo(p.trail[0][0] * sx, p.trail[0][1] * sy);
-    for (let i = 1; i < p.trail.length; i++) {
+    // Decimate: every 2nd point is indistinguishable at ~1 cell/step
+    for (let i = 2; i < p.trail.length; i += 2) {
       ctx.lineTo(p.trail[i][0] * sx, p.trail[i][1] * sy);
     }
+    const last = p.trail[p.trail.length - 1];
+    ctx.lineTo(last[0] * sx, last[1] * sy);
     ctx.stroke();
 
-    // Glowing head for active particles
-    if (p.active) {
-      const [hx, hy] = p.trail[p.trail.length - 1];
-      const cx = hx * sx;
-      const cy = hy * sy;
-
-      const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, 6);
-      grad.addColorStop(0, 'rgba(100, 255, 80, 1)');
-      grad.addColorStop(0.5, 'rgba(57, 255, 20, 0.5)');
-      grad.addColorStop(1, 'rgba(57, 255, 20, 0)');
-      ctx.globalAlpha = 1;
-      ctx.fillStyle = grad;
-      ctx.beginPath();
-      ctx.arc(cx, cy, 6, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    ctx.restore();
+    // Glowing head
+    const cx = last[0] * sx;
+    const cy = last[1] * sy;
+    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, 6);
+    grad.addColorStop(0, 'rgba(100, 255, 80, 1)');
+    grad.addColorStop(0.5, 'rgba(57, 255, 20, 0.5)');
+    grad.addColorStop(1, 'rgba(57, 255, 20, 0)');
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+    ctx.fill();
   }
+  ctx.restore();
+}
+
+/** Stamp a finished particle's full trail onto the persistent trail layer. */
+export function stampTrail(
+  layerCtx: CanvasRenderingContext2D,
+  p: Particle,
+  canvasW: number,
+  canvasH: number
+): void {
+  if (p.trail.length < 2) return;
+  const sx = canvasW / GRID_W;
+  const sy = canvasH / GRID_H;
+
+  layerCtx.save();
+  layerCtx.globalAlpha = 0.4;
+  layerCtx.strokeStyle = p.detectedAt !== null ? '#22aa00' : '#1a6600';
+  layerCtx.lineWidth = 1;
+  layerCtx.lineJoin = 'round';
+
+  layerCtx.beginPath();
+  layerCtx.moveTo(p.trail[0][0] * sx, p.trail[0][1] * sy);
+  for (let i = 2; i < p.trail.length; i += 2) {
+    layerCtx.lineTo(p.trail[i][0] * sx, p.trail[i][1] * sy);
+  }
+  const last = p.trail[p.trail.length - 1];
+  layerCtx.lineTo(last[0] * sx, last[1] * sy);
+  layerCtx.stroke();
+  layerCtx.restore();
 }
 
 /**
- * Render the detector histogram as a horizontal bar chart at the bottom of the canvas.
- * histogram[x] = count of detections at x position (length = GRID_W).
- * Rendered at the bottom strip of height `stripH`.
+ * Render the detector histogram as a horizontal bar chart at the bottom of
+ * the canvas, with the theoretical |psi|^2 profile overlaid for comparison.
  */
 export function renderHistogram(
   ctx: CanvasRenderingContext2D,
   histogram: Float32Array,
+  theory: Float32Array | null,
   canvasW: number,
   canvasH: number,
   stripH: number
@@ -99,13 +129,35 @@ export function renderHistogram(
     ctx.fillRect(bx, stripY + stripH - barH, binW - 0.5, barH);
   }
 
-  // Label
+  // Theoretical Born-rule curve for comparison
+  if (theory) {
+    ctx.strokeStyle = 'rgba(255, 210, 80, 0.85)';
+    ctx.lineWidth = 1.25;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    for (let i = 0; i < theory.length; i++) {
+      const px = (i + 0.5) * (canvasW / theory.length);
+      const py = stripY + stripH - 2 - theory[i] * (stripH - 6);
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Labels
   ctx.fillStyle = 'rgba(150, 200, 255, 0.75)';
   ctx.font = '12px ui-monospace,monospace';
   ctx.textAlign = 'left';
   ctx.shadowColor = 'rgba(0,0,0,0.8)';
   ctx.shadowBlur = 3;
   ctx.fillText('DETECTOR SCREEN', 8, stripY + 14);
+  if (theory) {
+    ctx.fillStyle = 'rgba(255, 210, 80, 0.8)';
+    ctx.font = '10px ui-monospace,monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText('▪▪ theory |ψ|²', canvasW - 8, stripY + 13);
+  }
 
   ctx.restore();
 }

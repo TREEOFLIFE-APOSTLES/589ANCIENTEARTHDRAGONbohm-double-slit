@@ -1,13 +1,13 @@
 /**
  * Renders the wave function fields onto a canvas ImageData.
- * Supports three display modes: probability |psi|^2, real part Re(psi), or amplitude.
+ * Display modes: probability |psi|^2 or real part Re(psi).
  */
 
 import { GRID_W, GRID_H, BARRIER_Y } from '../physics/constants';
 import type { WaveField } from '../physics/wave';
 import { colormapWave, colormapDiverging } from './colormap';
 
-export type WaveDisplayMode = 'prob' | 'real' | 'amp';
+export type WaveDisplayMode = 'prob' | 'real';
 
 export function renderWaveField(
   imageData: ImageData,
@@ -25,6 +25,7 @@ export function renderWaveField(
       if (wave.re[i] > maxRe) maxRe = wave.re[i];
     }
   }
+  const absMax = Math.max(Math.abs(minRe), Math.abs(maxRe), 1e-10);
 
   for (let y = 0; y < GRID_H; y++) {
     for (let x = 0; x < GRID_W; x++) {
@@ -45,14 +46,9 @@ export function renderWaveField(
       if (mode === 'prob') {
         const t = Math.pow(wave.prob[idx], 0.5); // gamma correction
         [r, g, b] = colormapWave(t);
-      } else if (mode === 'real') {
-        const absMax = Math.max(Math.abs(minRe), Math.abs(maxRe), 1e-10);
+      } else {
         const t = (wave.re[idx] / absMax) * 0.5 + 0.5; // map [-1,1] to [0,1]
         [r, g, b] = colormapDiverging(t);
-      } else {
-        // amp — same as prob but linear
-        const t = wave.amp[idx] / (Math.sqrt(wave.prob[0] > 0 ? 1 : 1)); // already in amp
-        [r, g, b] = colormapWave(Math.min(t * 0.1, 1));
       }
 
       data[pxIdx] = r;
@@ -63,9 +59,24 @@ export function renderWaveField(
   }
 }
 
-/** Draw the barrier (dark rectangle with two slit gaps). */
+/** Slit gap x-ranges in grid cells, mirroring slitCentres() in wave.ts. */
+export function slitGaps(
+  slitCount: number,
+  slitWidth: number,
+  slitSep: number
+): Array<[number, number]> {
+  const cx = GRID_W / 2;
+  const centres =
+    slitCount === 1 ? [cx] :
+    slitCount === 3 ? [cx - slitSep, cx, cx + slitSep] :
+    [cx - slitSep / 2, cx + slitSep / 2];
+  return centres.map(c => [c - slitWidth / 2, c + slitWidth / 2]);
+}
+
+/** Draw the barrier (dark rectangle with slit gaps). */
 export function renderBarrier(
   ctx: CanvasRenderingContext2D,
+  slitCount: number,
   slitWidth: number,
   slitSep: number,
   canvasW: number,
@@ -76,19 +87,17 @@ export function renderBarrier(
 
   const barrierY = BARRIER_Y * scaleY;
   const barrierThickness = 8;
-  const cx = canvasW / 2;
 
-  const slit1Centre = cx - (slitSep / 2) * scaleX;
-  const slit2Centre = cx + (slitSep / 2) * scaleX;
-  const halfW = (slitWidth / 2) * scaleX;
+  const gaps = slitGaps(slitCount, slitWidth, slitSep)
+    .map(([a, b]) => [a * scaleX, b * scaleX] as [number, number]);
 
   ctx.fillStyle = '#1a1a2e';
-  // Left wall
-  ctx.fillRect(0, barrierY, slit1Centre - halfW, barrierThickness);
-  // Gap between slits
-  ctx.fillRect(slit1Centre + halfW, barrierY, slit2Centre - slit1Centre - slitWidth * scaleX, barrierThickness);
-  // Right wall
-  ctx.fillRect(slit2Centre + halfW, barrierY, canvasW - (slit2Centre + halfW), barrierThickness);
+  let cursor = 0;
+  for (const [gapStart, gapEnd] of gaps) {
+    ctx.fillRect(cursor, barrierY, gapStart - cursor, barrierThickness);
+    cursor = gapEnd;
+  }
+  ctx.fillRect(cursor, barrierY, canvasW - cursor, barrierThickness);
 
   // Barrier outline
   ctx.strokeStyle = '#4a9eff';

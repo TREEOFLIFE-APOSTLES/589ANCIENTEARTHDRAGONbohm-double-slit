@@ -20,8 +20,13 @@ export const BARRIER_Y = 150;
 export const DEFAULT_SLIT_WIDTH = 12;
 export const DEFAULT_SLIT_SEP = 60; // centre-to-centre separation
 
-// Number of point sources per slit for Huygens-Fresnel summation
-export const SOURCES_PER_SLIT = 120;
-
 // Regularisation: min R before we clamp Q
 export const R_EPSILON = 1e-5;
+
+// Free-particle forward speed ħk/m — the natural velocity scale
+export const V_FORWARD = (HBAR * K) / MASS;
+
+// Speed cap: Bohmian speeds genuinely spike near wave nodes, but unbounded
+// values destabilise the fixed-step RK4. 6× forward speed preserves the
+// whip-around-the-node dynamics while bounding the step length.
+export const V_MAX = 6 * V_FORWARD;

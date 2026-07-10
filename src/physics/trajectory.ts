@@ -4,7 +4,7 @@
  * Each particle has a definite position at all times.
  * Its velocity is given by the guidance equation: v = (hbar/m) * Im(grad(psi)/psi)
  *
- * Integration: 4th-order Runge-Kutta with dt chosen to keep step < 1 grid cell.
+ * Integration: 4th-order Runge-Kutta with dt chosen to keep step ~ 1 grid cell.
  */
 
 import { GRID_W, GRID_H, BARRIER_Y } from './constants';
@@ -17,10 +17,18 @@ export interface Particle {
   trail: Array<[number, number]>;
   active: boolean;
   detectedAt: number | null; // x position at detector
+  age: number;               // integration steps taken
 }
 
-const DT = 4.0; // time step: base vy ≈ K = 0.25, so DT=4 → ~1 cell/frame = visible motion
+// Base forward speed is ħk/m ≈ 0.25 cells per unit time, so DT=5 → ~1.25
+// cells/frame of visible motion.
+const DT = 5.0;
 const MAX_TRAIL = 800;
+
+// Stationary-state Bohmian flow has genuine slow regions and vortices near
+// dark-fringe nodes. A particle that wanders for this many steps without
+// reaching the detector is retired (no detection recorded).
+const MAX_AGE = 3000;
 
 export function createParticle(x: number): Particle {
   // Spawn at y+8: far enough from the barrier that the wave has developed
@@ -32,19 +40,18 @@ export function createParticle(x: number): Particle {
     trail: [[x, startY]],
     active: true,
     detectedAt: null,
+    age: 0,
   };
 }
 
 // Minimum |psi|^2 fraction of row-max before a position is eligible for spawn.
 // Prevents particles starting in near-zero amplitude regions (dark nodes near
-// the barrier at extreme slit params) where the velocity field is clamped to 0.
+// the barrier at extreme slit params) where the flow is slow and vortical.
 const SPAWN_PROB_THRESHOLD = 0.02;
 
 /**
  * Spawn particles whose initial x positions follow the Born distribution,
  * but only at positions where |psi|^2 exceeds SPAWN_PROB_THRESHOLD * rowMax.
- * This prevents particles from starting in the near-zero regions between the
- * slits at extreme slit parameters, where the velocity field is unreliable.
  */
 export function spawnParticles(count: number, wave: WaveField): Particle[] {
   const y = BARRIER_Y + 8;
@@ -64,6 +71,9 @@ export function spawnParticles(count: number, wave: WaveField): Particle[] {
     sum += row[x];
   }
 
+  const particles: Particle[] = [];
+  if (sum <= 0) return particles; // degenerate field — nothing sensible to spawn
+
   // Build CDF over eligible positions only
   const cdf = new Float32Array(GRID_W);
   let acc = 0;
@@ -72,7 +82,6 @@ export function spawnParticles(count: number, wave: WaveField): Particle[] {
     cdf[x] = acc;
   }
 
-  const particles: Particle[] = [];
   for (let n = 0; n < count; n++) {
     const r = Math.random();
     let x = GRID_W / 2; // fallback to centre
@@ -102,10 +111,15 @@ function rk4Step(
   ];
 }
 
-export function stepParticle(particle: Particle, vf: VelocityField): void {
+export function stepParticle(
+  particle: Particle,
+  vf: VelocityField,
+  speed: number = 1
+): void {
   if (!particle.active) return;
 
-  const [nx, ny] = rk4Step(particle.x, particle.y, vf, DT);
+  const [nx, ny] = rk4Step(particle.x, particle.y, vf, DT * speed);
+  particle.age++;
 
   // Out of bounds
   if (nx < 0 || nx >= GRID_W || ny >= GRID_H) {
@@ -123,6 +137,12 @@ export function stepParticle(particle: Particle, vf: VelocityField): void {
   // Reached detector
   if (ny >= GRID_H - 2) {
     particle.detectedAt = nx;
+    particle.active = false;
+    return;
+  }
+
+  // Trapped in a slow region / vortex — retire without detection
+  if (particle.age >= MAX_AGE) {
     particle.active = false;
   }
 }
