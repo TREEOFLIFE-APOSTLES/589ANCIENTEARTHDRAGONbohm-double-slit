@@ -30,6 +30,10 @@ Particles have definite positions at all times. Their trajectories are guided by
 - **No wave function collapse** — the wave is a real field; detection is just a particle reaching the screen
 - **Copenhagen contrast** — toggle to see the same field with no trajectories, particles "teleporting" to the detector
 
+![Quantum potential Q and the guidance flow field overlaid on the classic two-slit setup](public/demo/quantum-potential.gif)
+
+*Q potential (plasma overlay) and the guidance flow field together — particles ride the arrows straight into Q's valleys.*
+
 ## Physics
 
 The guidance equation determines particle velocity from the wave function:
@@ -45,6 +49,22 @@ Q = −(ħ²/2m) · ∇²R / R
 ```
 
 The wave function is computed via Huygens-Fresnel superposition with the Rayleigh-Sommerfeld obliquity factor cos θ, using adaptive source counts per slit (source spacing stays far below λ/2, so the discretisation is exact for display purposes while staying fast enough to recompute live as you drag a slider). The guidance velocity comes purely from the phase gradient — the outgoing-wave kernel already carries the forward momentum ħk, so no drift term is added. Near wave nodes the true Bohmian speed diverges; the field is regularised and speed-capped so the fixed-step 4th-order Runge-Kutta integrator stays stable while keeping the characteristic whip around dark fringes.
+
+### One slit, two slits, three slits
+
+![Single-slit diffraction: one broad central maximum, no interference fringes](public/demo/single-slit.gif)
+
+*Single slit: pure diffraction. No second path to interfere with, so no fringes — only the diffraction envelope.*
+
+![Triple-slit grating: sharper primary maxima with faint secondary maxima between them](public/demo/triple-slit.gif)
+
+*Three slits sharpen the primary maxima and add faint secondary maxima between them — the same physics as a diffraction grating, one slit at a time.*
+
+### Bohm vs. Copenhagen
+
+![Copenhagen interpretation: particles appear directly at the detector with no trajectory, sampled from |ψ|²](public/demo/copenhagen-vs-bohm.gif)
+
+*Toggle to Copenhagen and the trajectories vanish — particles simply appear at the detector, Born-rule sampled from \|ψ\|², with no path in between.*
 
 ## Controls
 
