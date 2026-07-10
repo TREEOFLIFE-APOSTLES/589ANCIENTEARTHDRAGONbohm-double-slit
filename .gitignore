@@ -27,3 +27,5 @@ dist-ssr
 gif-frames/
 capture-gif.mjs
 review-*.png
+
+.vercel

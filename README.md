@@ -2,6 +2,13 @@
 
 # Bohmian Mechanics — Double-Slit Experiment
 
+![Quantum Mechanics](https://img.shields.io/badge/physics-quantum_mechanics-blueviolet)
+![Pilot Wave](https://img.shields.io/badge/interpretation-de_Broglie--Bohm-8A2BE2)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)
+![Vite](https://img.shields.io/badge/Vite-8-646CFF?logo=vite&logoColor=white)
+![Canvas 2D](https://img.shields.io/badge/render-Canvas_2D-orange)
+![No Framework](https://img.shields.io/badge/framework-none-lightgrey)
+
 An interactive visualisation of the double-slit experiment from the perspective of David Bohm's pilot wave theory (de Broglie-Bohm / Bohmian mechanics).
 
 Particles have definite positions at all times. Their trajectories are guided by a real physical field — the pilot wave ψ — through the quantum potential Q. The interference pattern is not a mystery; it is the natural consequence of Q's topology.
